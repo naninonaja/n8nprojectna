@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task PWA - จัดการงานค้าง</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .task-card {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+            transition: all 0.3s ease;
+        }
+        .task-card:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+            transform: translateY(-2px);
+        }
+        .status-todo { background-color: #fef3c7; color: #b45309; }
+        .status-done { background-color: #d1fae5; color: #065f46; text-decoration: line-through; }
+        .btn-primary {
+            background-color: #4f46e5;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        .btn-primary:hover { background-color: #4338ca; }
+        /* สไตล์สำหรับปุ่ม Done/Reopen */
+        .btn-done { background-color: #10b981; color: white; }
+        .btn-done:hover { background-color: #059669; }
+        .btn-reopen { background-color: #f97316; color: white; }
+        .btn-reopen:hover { background-color: #ea580c; }
+    </style>
+</head>
+<body class="p-4 sm:p-8">
+
+    <!-- Modal สำหรับเพิ่มงาน -->
+    <div id="addTaskModal" class="fixed inset-0 bg-gray-600 bg-opacity-75 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-white p-6 rounded-xl shadow-2xl w-full max-w-md">
+            <h2 class="text-2xl font-bold mb-4 text-gray-800">เพิ่มงานใหม่</h2>
+            <form id="taskForm" onsubmit="handleAddTask(event)">
+                <div class="mb-4">
+                    <label for="taskName" class="block text-sm font-medium text-gray-700 mb-1">ชื่องาน:</label>
+                    <input type="text" id="taskName" required class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div class="mb-6">
+                    <label for="dueDate" class="block text-sm font-medium text-gray-700 mb-1">กำหนดส่ง:</label>
+                    <input type="date" id="dueDate" required class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeModal()" class="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition duration-150">ยกเลิก</button>
+                    <button type="submit" class="btn-primary">บันทึกงาน</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="max-w-4xl mx-auto">
+        <header class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-extrabold text-gray-900">รายการงานค้าง (Apps Script API)</h1>
+            <div class="flex space-x-3">
+                <button onclick="openModal()" class="btn-primary flex items-center space-x-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                    <span>เพิ่มงาน</span>
+                </button>
+                <button onclick="fetchTasks()" id="refreshButton" class="p-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition duration-150" title="Refresh">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181-3.181m0 0a1.25 1.25 0 012.247 1.099l-.039 1.107L16.02 12m-2.193 5.48a1.25 1.25 0 001.099 2.247h.001M21 12l-3.181 3.181M18.819 8.819a1.25 1.25 0 001.099 2.247l.039 1.107L8 15" />
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Message/Loading Area -->
+        <div id="messageArea" class="mb-4 p-3 rounded-lg text-center font-medium bg-blue-100 text-blue-700 hidden"></div>
+        <div id="loadingIndicator" class="text-center py-10 hidden">
+            <svg class="animate-spin h-8 w-8 text-indigo-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="mt-2 text-gray-600">กำลังโหลดงาน...</p>
+        </div>
+
+        <!-- Task List Area -->
+        <div id="taskList" class="space-y-4">
+            <!-- Tasks will be rendered here -->
+        </div>
+
+        <div id="emptyMessage" class="text-center py-16 text-gray-500 text-lg hidden">
+            <p>🎉 ไม่มีงานค้าง! เยี่ยมมาก</p>
+            <p class="mt-2 text-sm">กด "เพิ่มงาน" เพื่อเริ่มต้นรายการใหม่</p>
+        </div>
+    </div>
+
+    <script>
+        // *** 1. CONFIGURATION: วาง Web App URL ของ Google Apps Script ที่คุณได้จากขั้นตอนที่ 2 ที่นี่ ***
+        const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzpOmA_mKknmAds9jRTlRmtpOl0CXDhhG0TTRvIWOOuR04echFUMS_8b5SN_OGs-xKp/exec"; 
+        
+        // สถานะเริ่มต้น
+        let tasksData = [];
+
+        // ------------------ UTILITY FUNCTIONS ------------------
+
+        /** แสดงข้อความแจ้งเตือน (Success/Error) */
+        function showMessage(message, isSuccess = true) {
+            const area = document.getElementById('messageArea');
+            area.textContent = message;
+            area.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-blue-100', 'text-blue-700');
+            area.classList.add(isSuccess ? 'bg-blue-100' : 'bg-red-100', isSuccess ? 'text-blue-700' : 'text-red-700');
+            
+            setTimeout(() => {
+                area.classList.add('hidden');
+            }, 5000);
+        }
+
+        /** เปิด/ปิด Loading Indicator */
+        function setLoading(isLoading) {
+            document.getElementById('loadingIndicator').classList.toggle('hidden', !isLoading);
+            document.getElementById('refreshButton').disabled = isLoading;
+        }
+
+        /** เปิด Modal เพิ่มงาน */
+        function openModal() {
+            document.getElementById('addTaskModal').classList.remove('hidden');
+        }
+
+        /** ปิด Modal เพิ่มงาน */
+        function closeModal() {
+            document.getElementById('addTaskModal').classList.add('hidden');
+            document.getElementById('taskForm').reset();
+        }
+
+        // ------------------ API CALLS (GET/POST) ------------------
+        
+        /** ดึงรายการงานทั้งหมดจาก Google Apps Script */
+        async function fetchTasks() {
+            setLoading(true);
+            try {
+                const response = await fetch(GAS_API_URL, {
+                    method: 'GET', // GAS doGet() จะถูกเรียกใช้
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.success && result.tasks) {
+                    tasksData = result.tasks;
+                    renderTasks();
+                    showMessage("โหลดรายการงานค้างสำเร็จ!", true);
+                } else {
+                    showMessage(result.message || "เกิดข้อผิดพลาดในการโหลดงาน.", false);
+                }
+
+            } catch (error) {
+                console.error("Fetch Tasks Error:", error);
+                showMessage("ไม่สามารถเชื่อมต่อกับ Google Apps Script ได้ ตรวจสอบ URL และการ Deploy.", false);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        /** จัดการการเพิ่มงานใหม่ */
+        async function handleAddTask(event) {
+            event.preventDefault();
+            setLoading(true);
+
+            const taskName = document.getElementById('taskName').value;
+            const dueDate = document.getElementById('dueDate').value;
+
+            const payload = {
+                action: "new_task", // สั่งให้ GAS รัน handleNewTask
+                data: {
+                    "Task Name": taskName,
+                    "Due Date": dueDate,
+                    "Status": "To Do"
+                }
+            };
+
+            try {
+                const response = await fetch(GAS_API_URL, {
+                    method: 'POST', // GAS doPost() จะถูกเรียกใช้
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const result = await response.json();
+
+                if (result.success) {
+                    showMessage("เพิ่มงานใหม่สำเร็จแล้ว! กำลังโหลดรายการ...", true);
+                    closeModal();
+                    await fetchTasks(); // โหลดข้อมูลใหม่เพื่ออัปเดตหน้าจอ
+                } else {
+                    showMessage(result.message || "เกิดข้อผิดพลาดในการเพิ่มงาน.", false);
+                }
+
+            } catch (error) {
+                console.error("Add Task Error:", error);
+                showMessage("ไม่สามารถบันทึกงานได้ ลองตรวจสอบ Console", false);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        /** จัดการการอัปเดตสถานะ (Done/Reopen) */
+        async function updateTaskStatus(rowId, newStatus) {
+            setLoading(true);
+
+            const payload = {
+                action: "update_status", // สั่งให้ GAS รัน handleUpdateStatus
+                row_id: rowId,
+                new_status: newStatus
+            };
+
+            try {
+                const response = await fetch(GAS_API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const result = await response.json();
+
+                if (result.success) {
+                    showMessage(`อัปเดตสถานะเป็น '${newStatus}' สำเร็จ! กำลังโหลดรายการ...`, true);
+                    await fetchTasks(); // โหลดข้อมูลใหม่เพื่ออัปเดตหน้าจอ
+                } else {
+                    showMessage(result.message || "เกิดข้อผิดพลาดในการอัปเดตสถานะ.", false);
+                }
+
+            } catch (error) {
+                console.error("Update Status Error:", error);
+                showMessage("ไม่สามารถอัปเดตสถานะได้", false);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // ------------------ RENDERING ------------------
+
+        /** แปลงวันที่จาก YYYY-MM-DD ให้เป็นวันที่ไทย (dd/MM/yyyy) */
+        function formatDateThai(dateString) {
+            if (!dateString) return 'ไม่มีกำหนด';
+            try {
+                const date = new Date(dateString);
+                // ปรับให้เป็น UTC เพื่อป้องกันปัญหา Timezone
+                const utcDate = new Date(date.getTime() + date.getTimezoneOffset() * 60000); 
+                
+                const options = { year: 'numeric', month: 'numeric', day: 'numeric', timeZone: 'Asia/Bangkok' };
+                return utcDate.toLocaleDateString('th-TH', options);
+            } catch (e) {
+                return dateString;
+            }
+        }
+
+        /** สร้าง Task Card ใน HTML */
+        function createTaskCard(task) {
+            const isDone = task.Status === 'Done';
+            const statusClass = isDone ? 'status-done' : 'status-todo';
+            const buttonText = isDone ? 'Reopen' : 'Mark as Done';
+            const nextStatus = isDone ? 'To Do' : 'Done';
+            const buttonClass = isDone ? 'btn-reopen' : 'btn-done';
+
+            const card = document.createElement('div');
+            card.className = `task-card bg-white p-5 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center border-l-8 ${isDone ? 'border-green-500' : 'border-yellow-500'}`;
+            
+            card.innerHTML = `
+                <div class="flex-1 min-w-0 mb-3 sm:mb-0">
+                    <div class="text-xs font-semibold uppercase rounded-full px-2 py-0.5 w-fit ${statusClass} mb-1">
+                        ${task.Status}
+                    </div>
+                    <div class="text-lg font-bold text-gray-800 break-words">${task['Task Name']}</div>
+                    <div class="text-sm text-gray-500 mt-1">
+                        <span class="font-medium">กำหนดส่ง:</span> ${formatDateThai(task['Due Date'])}
+                        <span class="ml-3 text-xs text-gray-400">| ID: ${task.row_id}</span>
+                    </div>
+                </div>
+                <div class="flex-shrink-0">
+                    <button 
+                        onclick="updateTaskStatus('${task.row_id}', '${nextStatus}')" 
+                        class="text-sm ${buttonClass} py-2 px-4 rounded-lg hover:opacity-90 transition duration-150 w-full sm:w-auto"
+                    >
+                        ${buttonText}
+                    </button>
+                </div>
+            `;
+            return card;
+        }
+
+        /** Render รายการงานทั้งหมด */
+        function renderTasks() {
+            const taskList = document.getElementById('taskList');
+            taskList.innerHTML = ''; // ล้างรายการเดิม
+            
+            if (tasksData.length === 0) {
+                document.getElementById('emptyMessage').classList.remove('hidden');
+                return;
+            }
+            document.getElementById('emptyMessage').classList.add('hidden');
+
+            // แยกงานที่ค้าง (To Do) กับงานที่เสร็จแล้ว (Done)
+            const todoTasks = tasksData.filter(t => t.Status === 'To Do');
+            const doneTasks = tasksData.filter(t => t.Status === 'Done');
+
+            // แสดง To Do ก่อน
+            todoTasks.forEach(task => {
+                taskList.appendChild(createTaskCard(task));
+            });
+            
+            // แสดง Done ตามหลัง
+            if (doneTasks.length > 0) {
+                 const doneHeader = document.createElement('h2');
+                 doneHeader.className = 'text-xl font-bold text-gray-700 mt-8 mb-4 border-b pb-1';
+                 doneHeader.textContent = `งานที่เสร็จแล้ว (${doneTasks.length})`;
+                 taskList.appendChild(doneHeader);
+
+                 doneTasks.forEach(task => {
+                    taskList.appendChild(createTaskCard(task));
+                });
+            }
+        }
+
+        // ------------------ INITIALIZATION ------------------
+        window.onload = function() {
+            // ตรวจสอบว่าได้เปลี่ยน URL หรือยัง
+            if (GAS_API_URL === "YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE") {
+                showMessage("🚨 กรุณาเปลี่ยน GAS_API_URL ในโค้ดก่อนใช้งาน!", false);
+                return;
+            }
+            fetchTasks();
+        };
+
+        // สำหรับจัดการ CORS preflight ใน PWA (ในกรณีที่จำเป็น)
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('addTaskModal').addEventListener('click', (e) => {
+                if (e.target === document.getElementById('addTaskModal')) {
+                    closeModal();
+                }
+            });
+        });
+
+    </script>
+</body>
+</html>
